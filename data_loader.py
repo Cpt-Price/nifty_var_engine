@@ -34,28 +34,30 @@ def stationarity_audit(df, columns, title):
         print(f"{col:<15} | {result[0]:<15.4f} | {result[1]:<10.4f} | {status}")
 
 def fetch_cpu_index(cache_file="CPU_index.csv"):
-    # Hard-coded local path for research integrity
     if os.path.exists(cache_file):
-        print(f"[DATA] Loading static Global CPU Index from {cache_file}...")
-        cpu_df = pd.read_csv(cache_file)
+        print(f"[DATA] Loading Global CPU Index from {cache_file}...")
 
-        # Standardize columns
+        # 1. Skip the citation rows (0-3) and read only the first two columns
+        # Using usecols=[0,1] avoids the "3 vs 2 columns" length mismatch error
+        cpu_df = pd.read_csv(cache_file, skiprows=4, usecols=[0, 1])
         cpu_df.columns = ['Date', 'Global_CPU']
-        cpu_df['Global_CPU'] = pd.to_numeric(cpu_df['Global_CPU'], errors='coerce')
-        cpu_df['Date'] = pd.to_datetime(cpu_df['Date'], errors='coerce')
 
-        cpu_df.dropna(inplace=True)
+        # 2. Force conversion of the date strings (Apr-87, Jan-88, etc.)
+        # %b is the 3-letter month, %y is the 2-digit year
+        cpu_df['Date'] = pd.to_datetime(cpu_df['Date'], format='%b-%y', errors='coerce')
+
+        # 3. Clean up and resample
+        cpu_df['Global_CPU'] = pd.to_numeric(cpu_df['Global_CPU'], errors='coerce')
+        cpu_df.dropna(subset=['Date'], inplace=True)
         cpu_df.set_index('Date', inplace=True)
 
-        # Resample and forward-fill to 2026
-        cpu_daily = cpu_df.resample('D').ffill()
-        return cpu_daily
-    else:
-        # Emergency fallback if you forget to upload the CSV
-        print("[WARNING] Static CPU file not found. Generating neutral 100.0 placeholder.")
-        dates = pd.date_range(start=START_DATE, end=pd.Timestamp.now())
-        return pd.DataFrame({'Global_CPU': 100.0}, index=dates)
+        # Resample to daily frequency and forward-fill values
+        return cpu_df.resample('D').ffill()
 
+    # Failsafe if file is missing
+    print("[WARNING] CPU_index.csv not found. Using placeholder.")
+    dates = pd.date_range(start='2007-01-01', end=pd.Timestamp.now())
+    return pd.DataFrame({'Global_CPU': 100.0}, index=dates)
 def fetch_and_clean_data():
     print(f"\n[PIPELINE] Initializing Data Ingestion from {START_DATE}...")
 
